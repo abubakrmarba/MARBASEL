@@ -526,6 +526,18 @@ function ReceiptContent({ data }) {
           <div>Sotuvchi: {seller}</div>
         </div>
       </div>
+      {customer.delivery_lat && customer.delivery_lng && (
+  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+    <div style={{ textAlign: "center" }}>
+      <img
+        src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
+        alt="Manzil QR"
+        style={{ width: 90, height: 90 }}
+      />
+      <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>Yetkazib berish manzili</div>
+    </div>
+  </div>
+)}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginBottom: 14 }}>
         <thead><tr><th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #111" }}>Nomi</th><th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #111" }}>Soni</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Narxi</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Summa</th></tr></thead>
         <tbody>

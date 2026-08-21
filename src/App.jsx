@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Search, Plus, Trash2, Printer, LogOut, ShoppingCart,
-  Users, History, X, Instagram, Send, Wallet, Check, ChevronLeft
+  Users, History, X, Instagram, Send, Wallet, Check, ChevronLeft, Inbox
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
- 
+
 const SELLER_NAMES = ["Azizxon", "Doniyorjon", "Jahongir", "Javohirbek", "Hamidjon", "Jamshidbek", "Xislatbek", "Mubashirxon", "Jahongiroldi"];
 const ORANGE = "#E9642B";
 const ORANGE_DARK = "#C24F1F";
@@ -16,20 +16,20 @@ function formatDate(iso) {
   try { return new Date(iso).toLocaleString("uz-UZ", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
   catch (e) { return iso; }
 }
- 
+
 function LogoMark({ size = 20, sub = true }) {
   return (
     <img src="/logo.png" alt="MARBA" style={{ height: size * 2.6, width: "auto", borderRadius: "50%" }} />
   );
 }
- 
+
 async function nextCustomerId() {
   const { data } = await supabase.from("customers").select("id").order("id", { ascending: false }).limit(1);
   const last = data && data[0] ? data[0].id.trim() : "00000000";
   const next = (parseInt(last, 10) || 0) + 1;
   return String(next).padStart(8, "0");
 }
- 
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [sellerName, setSellerName] = useState("");
@@ -37,10 +37,10 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [busy, setBusy] = useState(false);
- 
+
   const [activeTab, setActiveTab] = useState("sale");
   const [products, setProducts] = useState([]);
- 
+
   const [saleCustomer, setSaleCustomer] = useState(null);
   const [customerIdInput, setCustomerIdInput] = useState("");
   const [saleError, setSaleError] = useState("");
@@ -49,15 +49,18 @@ export default function App() {
   const [saleSearch, setSaleSearch] = useState("");
   const [qtyDraft, setQtyDraft] = useState({});
   const [paymentInput, setPaymentInput] = useState("");
- 
+
   const [custSearch, setCustSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [payAmount, setPayAmount] = useState("");
- 
+
   const [historyRows, setHistoryRows] = useState([]);
   const [receipt, setReceipt] = useState(null);
- 
+
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { if (data.session) initSeller(data.session); });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -65,16 +68,17 @@ export default function App() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
- 
+
   async function initSeller(s) {
     setSession(s);
     const { data } = await supabase.from("sellers").select("name").eq("auth_user_id", s.user.id).maybeSingle();
     setSellerName(data?.name || s.user.email.split("@")[0]);
   }
- 
+
   useEffect(() => { if (session) refreshProducts(); }, [session]);
   useEffect(() => { if (activeTab === "history" && session) refreshHistory(); }, [activeTab, session]);
- 
+  useEffect(() => { if (activeTab === "orders" && session) refreshOrders(); }, [activeTab, session]);
+
   async function refreshProducts() {
     const { data } = await supabase.from("products").select("*").order("name");
     setProducts(data || []);
@@ -87,7 +91,38 @@ export default function App() {
       .limit(100);
     setHistoryRows(data || []);
   }
- 
+  async function refreshOrders() {
+    setOrdersLoading(true);
+    const { data } = await supabase
+      .from("buyurtmalar")
+      .select("*, buyurtma_items(*)")
+      .eq("status", "yangi")
+      .order("created_at", { ascending: false });
+    const list = data || [];
+    const customerIds = [...new Set(list.map((o) => o.customer_id))];
+    let customerMap = {};
+    if (customerIds.length) {
+      const { data: custs } = await supabase.from("customers").select("*").in("id", customerIds);
+      (custs || []).forEach((c) => { customerMap[c.id] = c; });
+    }
+    setOrders(list.map((o) => ({ ...o, customer: customerMap[o.customer_id] })));
+    setOrdersLoading(false);
+  }
+
+  async function convertOrderToSale(order) {
+    if (!order.customer) return;
+    await supabase.from("buyurtmalar").update({ status: "jarayonda" }).eq("id", order.id);
+    setSaleCustomer(order.customer);
+    setCart(order.buyurtma_items.map((it) => ({ productId: it.product_id, name: it.product_name, price: it.price, qty: it.qty })));
+    setActiveTab("sale");
+    refreshOrders();
+  }
+  async function cancelOrder(order) {
+    if (!confirm("Buyurtmani bekor qilishga ishonchingiz komilmi?")) return;
+    await supabase.from("buyurtmalar").update({ status: "bekor_qilindi" }).eq("id", order.id);
+    refreshOrders();
+  }
+
   async function doLogin() {
     if (!loginName) { setLoginError("Sotuvchini tanlang"); return; }
     setBusy(true);
@@ -101,7 +136,7 @@ export default function App() {
     await supabase.auth.signOut();
     setActiveTab("sale"); setSaleCustomer(null); setCart([]);
   }
- 
+
   async function searchCustomer() {
     const id = customerIdInput.trim();
     setSaleError("");
@@ -124,13 +159,13 @@ export default function App() {
     setSaleCustomer(data); setNewCustomerForm(null); setSaleError("");
   }
   function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); }
- 
+
   const saleSearchResults = useMemo(() => {
     const q = saleSearch.trim().toLowerCase();
     if (!q) return [];
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [saleSearch, products]);
- 
+
   function addToCart(product) {
     const qty = Math.max(1, Math.min(Number(qtyDraft[product.id]) || 1, product.qty));
     if (product.qty <= 0) return;
@@ -149,39 +184,39 @@ export default function App() {
   const cartTotal = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const paidNum = Number(paymentInput) || 0;
   const debtPreview = Math.max((saleCustomer?.debt || 0) + cartTotal - paidNum, 0);
- 
+
   async function finishSale() {
     if (!saleCustomer) { setSaleError("Avval mijozni tanlang"); return; }
     if (cart.length === 0) { setSaleError("Ro'yxatga kamida bitta qism qo'shing"); return; }
     setSaleError(""); setBusy(true);
- 
+
     const total = cartTotal, paid = paidNum;
     const newDebt = Math.max((saleCustomer.debt || 0) + total - paid, 0);
- 
+
     const { data: sale, error: saleErr } = await supabase.from("sales")
       .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid })
       .select("*").single();
     if (saleErr) { setSaleError("Xatolik: " + saleErr.message); setBusy(false); return; }
- 
+
     await supabase.from("sale_items").insert(cart.map((l) => ({ sale_id: sale.id, product_name: l.name, price: l.price, qty: l.qty })));
- 
+
     for (const line of cart) {
       const prod = products.find((p) => p.id === line.productId);
       if (prod) await supabase.from("products").update({ qty: Math.max(0, prod.qty - line.qty) }).eq("id", prod.id);
     }
- 
+
     if (paid > 0) {
       await supabase.from("payments").insert({ customer_id: saleCustomer.id, amount: paid, seller_name: sellerName });
     }
- 
+
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
- 
+
     setBusy(false);
     setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at }, seller: sellerName });
     setCart([]); setPaymentInput(""); setSaleCustomer(updatedCustomer);
     refreshProducts();
   }
- 
+
   useEffect(() => {
     if (activeTab !== "customers") return;
     (async () => {
@@ -192,7 +227,7 @@ export default function App() {
       setCustomerResults(data || []);
     })();
   }, [custSearch, activeTab]);
- 
+
   async function openCustomer(c) {
     const { data: sales } = await supabase.from("sales").select("*, sale_items(*)").eq("customer_id", c.id).order("created_at", { ascending: false });
     setSelectedCustomer({ ...c, purchases: sales || [] });
@@ -207,13 +242,13 @@ export default function App() {
     setSelectedCustomer({ ...selectedCustomer, debt: data.debt });
     setPayAmount("");
   }
- 
+
   if (!session) {
     return (
-      <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, display: "flex", alignItems: "center", justifyContent: "center", background: PURPLE_DARK, padding: 24 }}>
+      <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: PURPLE_DARK, padding: 24 }}>
         <style>{loginCss}</style>
         <div style={{ width: "100%", maxWidth: 380 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 28, color: "#fff" }}><LogoMark size={26} /></div>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}><LogoMark size={26} /></div>
           <div className="mb-card" style={{ background: PURPLE, border: `1px solid ${PURPLE_BORDER}` }}>
             <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Sotuvchini tanlang</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 18 }}>
@@ -232,7 +267,7 @@ export default function App() {
       </div>
     );
   }
- 
+
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", background: PURPLE, color: "#161615" }}>
       <style>{appCss}</style>
@@ -244,14 +279,47 @@ export default function App() {
             <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
         </div>
- 
+
         <div style={{ background: PURPLE_DARK, display: "flex", overflowX: "auto", borderBottom: `1px solid ${PURPLE_BORDER}` }}>
           <div className={`mb-tab ${activeTab === "sale" ? "active" : ""}`} onClick={() => setActiveTab("sale")}><ShoppingCart size={16} /> Yangi sotuv</div>
+          <div className={`mb-tab ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}><Inbox size={16} /> Buyurtmalar{orders.length > 0 ? ` (${orders.length})` : ""}</div>
           <div className={`mb-tab ${activeTab === "customers" ? "active" : ""}`} onClick={() => setActiveTab("customers")}><Users size={16} /> Mijozlar</div>
           <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
         </div>
- 
+
         <div style={{ padding: 20, maxWidth: 1400, margin: "0 auto" }}>
+          {activeTab === "orders" && (
+            <div className="mb-card">
+              <div style={{ fontWeight: 700, marginBottom: 14 }}>Mijozlardan kelgan buyurtmalar</div>
+              {ordersLoading ? <div style={{ color: "#8a887e" }}>Yuklanmoqda...</div> : orders.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>Hozircha yangi buyurtma yo'q.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {orders.map((o) => (
+                    <div key={o.id} style={{ border: "1px solid #efeee7", borderRadius: 10, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{o.customer?.name || "Noma'lum mijoz"} <span style={{ color: "#8a887e", fontFamily: "monospace", fontWeight: 400, fontSize: 12.5 }}>({o.customer_id})</span></div>
+                          <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}</div>
+                        </div>
+                        <div style={{ fontWeight: 700 }}>
+                          Jami: {fmt(o.buyurtma_items.reduce((s, it) => s + it.price * it.qty, 0))}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 13.5, marginBottom: 10 }}>
+                        {o.buyurtma_items.map((it) => `${it.product_name} x${it.qty}`).join(", ")}
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button className="mb-btn mb-btn-primary" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
+                        <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === "sale" && (
             <div style={{ display: "grid", gap: 16 }}>
               {!saleCustomer ? (
@@ -295,7 +363,7 @@ export default function App() {
                     </div>
                     <button className="mb-btn mb-btn-ghost" onClick={changeCustomer}><ChevronLeft size={14} style={{ verticalAlign: -2 }} /> Boshqa mijoz</button>
                   </div>
- 
+
                   <div className="mb-card">
                     <div style={{ fontWeight: 700, marginBottom: 12 }}>2. Ehtiyot qismlar qo'shish</div>
                     <input className="mb-input" placeholder="Qism nomini qidirish..." value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} />
@@ -330,7 +398,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
- 
+
                   {cart.length > 0 && (
                     <div className="mb-card">
                       <div style={{ fontWeight: 700, marginBottom: 12 }}>3. To'lov</div>
@@ -347,7 +415,7 @@ export default function App() {
               )}
             </div>
           )}
- 
+
           {activeTab === "customers" && (
             <div style={{ display: "grid", gap: 14 }}>
               <input className="mb-input" style={{ maxWidth: 360 }} placeholder="ID yoki ism bo'yicha qidirish..." value={custSearch} onChange={(e) => setCustSearch(e.target.value)} />
@@ -393,7 +461,7 @@ export default function App() {
               )}
             </div>
           )}
- 
+
           {activeTab === "history" && (
             <div className="mb-card">
               {historyRows.length === 0 ? <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>Hali sotuvlar tarixi yo'q.</div> : (
@@ -415,12 +483,12 @@ export default function App() {
           )}
         </div>
       </div>
- 
+
       {receipt && <ReceiptOverlay data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
- 
+
 function ReceiptOverlay({ data, onClose }) {
   return (
     <>
@@ -437,7 +505,7 @@ function ReceiptOverlay({ data, onClose }) {
     </>
   );
 }
- 
+
 function ReceiptContent({ data }) {
   const { customer, purchase, seller } = data;
   return (
@@ -475,7 +543,7 @@ function ReceiptContent({ data }) {
     </div>
   );
 }
- 
+
 const loginCss = `
   * { box-sizing: border-box; }
   .mb-btn { cursor:pointer; border:none; border-radius:8px; font-weight:700; font-size:14px; padding:10px 16px; }

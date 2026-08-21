@@ -234,7 +234,7 @@ export default function App() {
   }
  
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, background: PURPLE, color: "#161615" }}>
+    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", background: PURPLE, color: "#161615" }}>
       <style>{appCss}</style>
       <div className="no-print">
         <div style={{ background: PURPLE_DARK, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>

@@ -251,7 +251,7 @@ export default function App() {
           <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
         </div>
  
-        <div style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ padding: 20, maxWidth: 1400, margin: "0 auto" }}>
           {activeTab === "sale" && (
             <div style={{ display: "grid", gap: 16 }}>
               {!saleCustomer ? (

@@ -4,29 +4,32 @@ import {
   Users, History, X, Instagram, Send, Wallet, Check, ChevronLeft
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-
+ 
 const SELLER_NAMES = ["Azizxon", "Doniyorjon", "Jahongir", "Javohirbek", "Hamidjon", "Jamshidbek", "Xislatbek", "Mubashirxon", "Jahongiroldi"];
 const ORANGE = "#E9642B";
 const ORANGE_DARK = "#C24F1F";
+const PURPLE_DARK = "#3D2A54";
+const PURPLE = "#4D3966";
+const PURPLE_BORDER = "#5D4976";
 function fmt(n) { return "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
 function formatDate(iso) {
   try { return new Date(iso).toLocaleString("uz-UZ", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
   catch (e) { return iso; }
 }
-
+ 
 function LogoMark({ size = 20, sub = true }) {
   return (
     <img src="/logo.png" alt="MARBA" style={{ height: size * 2.6, width: "auto", borderRadius: "50%" }} />
   );
 }
-
+ 
 async function nextCustomerId() {
   const { data } = await supabase.from("customers").select("id").order("id", { ascending: false }).limit(1);
   const last = data && data[0] ? data[0].id.trim() : "00000000";
   const next = (parseInt(last, 10) || 0) + 1;
   return String(next).padStart(8, "0");
 }
-
+ 
 export default function App() {
   const [session, setSession] = useState(null);
   const [sellerName, setSellerName] = useState("");
@@ -34,10 +37,10 @@ export default function App() {
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
   const [busy, setBusy] = useState(false);
-
+ 
   const [activeTab, setActiveTab] = useState("sale");
   const [products, setProducts] = useState([]);
-
+ 
   const [saleCustomer, setSaleCustomer] = useState(null);
   const [customerIdInput, setCustomerIdInput] = useState("");
   const [saleError, setSaleError] = useState("");
@@ -46,15 +49,15 @@ export default function App() {
   const [saleSearch, setSaleSearch] = useState("");
   const [qtyDraft, setQtyDraft] = useState({});
   const [paymentInput, setPaymentInput] = useState("");
-
+ 
   const [custSearch, setCustSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [payAmount, setPayAmount] = useState("");
-
+ 
   const [historyRows, setHistoryRows] = useState([]);
   const [receipt, setReceipt] = useState(null);
-
+ 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { if (data.session) initSeller(data.session); });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -62,16 +65,16 @@ export default function App() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-
+ 
   async function initSeller(s) {
     setSession(s);
     const { data } = await supabase.from("sellers").select("name").eq("auth_user_id", s.user.id).maybeSingle();
     setSellerName(data?.name || s.user.email.split("@")[0]);
   }
-
+ 
   useEffect(() => { if (session) refreshProducts(); }, [session]);
   useEffect(() => { if (activeTab === "history" && session) refreshHistory(); }, [activeTab, session]);
-
+ 
   async function refreshProducts() {
     const { data } = await supabase.from("products").select("*").order("name");
     setProducts(data || []);
@@ -84,7 +87,7 @@ export default function App() {
       .limit(100);
     setHistoryRows(data || []);
   }
-
+ 
   async function doLogin() {
     if (!loginName) { setLoginError("Sotuvchini tanlang"); return; }
     setBusy(true);
@@ -98,7 +101,7 @@ export default function App() {
     await supabase.auth.signOut();
     setActiveTab("sale"); setSaleCustomer(null); setCart([]);
   }
-
+ 
   async function searchCustomer() {
     const id = customerIdInput.trim();
     setSaleError("");
@@ -121,13 +124,13 @@ export default function App() {
     setSaleCustomer(data); setNewCustomerForm(null); setSaleError("");
   }
   function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); }
-
+ 
   const saleSearchResults = useMemo(() => {
     const q = saleSearch.trim().toLowerCase();
     if (!q) return [];
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [saleSearch, products]);
-
+ 
   function addToCart(product) {
     const qty = Math.max(1, Math.min(Number(qtyDraft[product.id]) || 1, product.qty));
     if (product.qty <= 0) return;
@@ -146,39 +149,39 @@ export default function App() {
   const cartTotal = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const paidNum = Number(paymentInput) || 0;
   const debtPreview = Math.max((saleCustomer?.debt || 0) + cartTotal - paidNum, 0);
-
+ 
   async function finishSale() {
     if (!saleCustomer) { setSaleError("Avval mijozni tanlang"); return; }
     if (cart.length === 0) { setSaleError("Ro'yxatga kamida bitta qism qo'shing"); return; }
     setSaleError(""); setBusy(true);
-
+ 
     const total = cartTotal, paid = paidNum;
     const newDebt = Math.max((saleCustomer.debt || 0) + total - paid, 0);
-
+ 
     const { data: sale, error: saleErr } = await supabase.from("sales")
       .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid })
       .select("*").single();
     if (saleErr) { setSaleError("Xatolik: " + saleErr.message); setBusy(false); return; }
-
+ 
     await supabase.from("sale_items").insert(cart.map((l) => ({ sale_id: sale.id, product_name: l.name, price: l.price, qty: l.qty })));
-
+ 
     for (const line of cart) {
       const prod = products.find((p) => p.id === line.productId);
       if (prod) await supabase.from("products").update({ qty: Math.max(0, prod.qty - line.qty) }).eq("id", prod.id);
     }
-
+ 
     if (paid > 0) {
       await supabase.from("payments").insert({ customer_id: saleCustomer.id, amount: paid, seller_name: sellerName });
     }
-
+ 
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
-
+ 
     setBusy(false);
     setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at }, seller: sellerName });
     setCart([]); setPaymentInput(""); setSaleCustomer(updatedCustomer);
     refreshProducts();
   }
-
+ 
   useEffect(() => {
     if (activeTab !== "customers") return;
     (async () => {
@@ -189,7 +192,7 @@ export default function App() {
       setCustomerResults(data || []);
     })();
   }, [custSearch, activeTab]);
-
+ 
   async function openCustomer(c) {
     const { data: sales } = await supabase.from("sales").select("*, sale_items(*)").eq("customer_id", c.id).order("created_at", { ascending: false });
     setSelectedCustomer({ ...c, purchases: sales || [] });
@@ -204,23 +207,23 @@ export default function App() {
     setSelectedCustomer({ ...selectedCustomer, debt: data.debt });
     setPayAmount("");
   }
-
+ 
   if (!session) {
     return (
-      <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, display: "flex", alignItems: "center", justifyContent: "center", background: "#241207", padding: 24 }}>
+      <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, display: "flex", alignItems: "center", justifyContent: "center", background: PURPLE_DARK, padding: 24 }}>
         <style>{loginCss}</style>
         <div style={{ width: "100%", maxWidth: 380 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 28, color: "#fff" }}><LogoMark size={26} /></div>
-          <div className="mb-card" style={{ background: "#1c1c1a", border: "1px solid #2c2c29" }}>
+          <div className="mb-card" style={{ background: PURPLE, border: `1px solid ${PURPLE_BORDER}` }}>
             <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Sotuvchini tanlang</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 18 }}>
               {SELLER_NAMES.map((n) => (
                 <button key={n} onClick={() => { setLoginName(n); setLoginError(""); }} className="mb-btn"
-                  style={{ background: loginName === n ? ORANGE : "#2a2a27", color: "#fff", fontSize: 13, padding: "10px 8px" }}>{n}</button>
+                  style={{ background: loginName === n ? ORANGE : PURPLE_DARK, color: "#fff", fontSize: 13, padding: "10px 8px" }}>{n}</button>
               ))}
             </div>
-            <div style={{ color: "#c9c7bd", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Parol</div>
-            <input type="password" className="mb-input" style={{ background: "#2a2a27", border: "1.5px solid #3a3a36", color: "#fff", marginBottom: 12 }}
+            <div style={{ color: "#d9d0e6", fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Parol</div>
+            <input type="password" className="mb-input" style={{ background: PURPLE_DARK, border: `1.5px solid ${PURPLE_BORDER}`, color: "#fff", marginBottom: 12 }}
               value={loginPass} onChange={(e) => setLoginPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doLogin()} placeholder="Parolni kiriting" />
             {loginError && <div style={{ color: "#f0837f", fontSize: 13, marginBottom: 10 }}>{loginError}</div>}
             <button className="mb-btn mb-btn-primary" style={{ width: "100%" }} disabled={busy} onClick={doLogin}>{busy ? "..." : "Kirish"}</button>
@@ -229,25 +232,25 @@ export default function App() {
       </div>
     );
   }
-
+ 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, background: "#FFF6E6", color: "#161615" }}>
+    <div style={{ fontFamily: "system-ui, sans-serif", minHeight: 500, background: PURPLE, color: "#161615" }}>
       <style>{appCss}</style>
       <div className="no-print">
-        <div style={{ background: "#161615", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ background: PURPLE_DARK, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div style={{ color: "#fff" }}><LogoMark size={16} sub={false} /></div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ color: "#c9c7bd", fontSize: 13.5 }}>Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b></span>
-            <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: "#3a3a36", display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
+            <span style={{ color: "#d9d0e6", fontSize: 13.5 }}>Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b></span>
+            <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
         </div>
-
-        <div style={{ background: "#161615", display: "flex", overflowX: "auto", borderBottom: "1px solid #2c2c29" }}>
+ 
+        <div style={{ background: PURPLE_DARK, display: "flex", overflowX: "auto", borderBottom: `1px solid ${PURPLE_BORDER}` }}>
           <div className={`mb-tab ${activeTab === "sale" ? "active" : ""}`} onClick={() => setActiveTab("sale")}><ShoppingCart size={16} /> Yangi sotuv</div>
           <div className={`mb-tab ${activeTab === "customers" ? "active" : ""}`} onClick={() => setActiveTab("customers")}><Users size={16} /> Mijozlar</div>
           <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
         </div>
-
+ 
         <div style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
           {activeTab === "sale" && (
             <div style={{ display: "grid", gap: 16 }}>
@@ -292,7 +295,7 @@ export default function App() {
                     </div>
                     <button className="mb-btn mb-btn-ghost" onClick={changeCustomer}><ChevronLeft size={14} style={{ verticalAlign: -2 }} /> Boshqa mijoz</button>
                   </div>
-
+ 
                   <div className="mb-card">
                     <div style={{ fontWeight: 700, marginBottom: 12 }}>2. Ehtiyot qismlar qo'shish</div>
                     <input className="mb-input" placeholder="Qism nomini qidirish..." value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} />
@@ -327,7 +330,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
-
+ 
                   {cart.length > 0 && (
                     <div className="mb-card">
                       <div style={{ fontWeight: 700, marginBottom: 12 }}>3. To'lov</div>
@@ -344,7 +347,7 @@ export default function App() {
               )}
             </div>
           )}
-
+ 
           {activeTab === "customers" && (
             <div style={{ display: "grid", gap: 14 }}>
               <input className="mb-input" style={{ maxWidth: 360 }} placeholder="ID yoki ism bo'yicha qidirish..." value={custSearch} onChange={(e) => setCustSearch(e.target.value)} />
@@ -390,7 +393,7 @@ export default function App() {
               )}
             </div>
           )}
-
+ 
           {activeTab === "history" && (
             <div className="mb-card">
               {historyRows.length === 0 ? <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>Hali sotuvlar tarixi yo'q.</div> : (
@@ -412,12 +415,12 @@ export default function App() {
           )}
         </div>
       </div>
-
+ 
       {receipt && <ReceiptOverlay data={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
-
+ 
 function ReceiptOverlay({ data, onClose }) {
   return (
     <>
@@ -434,7 +437,7 @@ function ReceiptOverlay({ data, onClose }) {
     </>
   );
 }
-
+ 
 function ReceiptContent({ data }) {
   const { customer, purchase, seller } = data;
   return (
@@ -472,7 +475,7 @@ function ReceiptContent({ data }) {
     </div>
   );
 }
-
+ 
 const loginCss = `
   * { box-sizing: border-box; }
   .mb-btn { cursor:pointer; border:none; border-radius:8px; font-weight:700; font-size:14px; padding:10px 16px; }
@@ -484,7 +487,7 @@ const loginCss = `
 `;
 const appCss = loginCss + `
   .mb-btn-primary:hover { background:${ORANGE_DARK}; }
-  .mb-btn-dark { background:#161615; color:#fff; }
+  .mb-btn-dark { background:${PURPLE_DARK}; color:#fff; }
   .mb-btn-ghost:hover { background:#eae8df; }
   .mb-btn-danger { background:#fbe4e2; color:#a1281f; }
   .mb-table { width:100%; border-collapse:collapse; font-size:13.5px; }

@@ -30,6 +30,18 @@ async function nextCustomerId() {
   return String(next).padStart(8, "0");
 }
 
+const ORDER_STATUS_LABELS = {
+  yangi: "Yangi", qabul_qilindi: "Qabul qilindi", yigilmoqda: "Yig'ilmoqda",
+  yolda: "Yo'lda", yetkazildi: "Yetkazildi", jarayonda: "Jarayonda", bekor_qilindi: "Bekor qilindi",
+};
+function orderStatusColor(status) {
+  if (status === "yangi") return "#8a887e";
+  if (status === "qabul_qilindi") return "#2C6FA6";
+  if (status === "yigilmoqda" || status === "yolda") return "#B8860B";
+  if (status === "yetkazildi") return "#2c7a4b";
+  return "#a1281f";
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [sellerName, setSellerName] = useState("");
@@ -96,7 +108,7 @@ export default function App() {
     const { data } = await supabase
       .from("buyurtmalar")
       .select("*, buyurtma_items(*)")
-      .eq("status", "yangi")
+      .not("status", "in", "(bekor_qilindi,yetkazildi)")
       .order("created_at", { ascending: false });
     const list = data || [];
     const customerIds = [...new Set(list.map((o) => o.customer_id))];
@@ -107,6 +119,11 @@ export default function App() {
     }
     setOrders(list.map((o) => ({ ...o, customer: customerMap[o.customer_id] })));
     setOrdersLoading(false);
+  }
+
+  async function setOrderStatus(order, status) {
+    await supabase.from("buyurtmalar").update({ status }).eq("id", order.id);
+    refreshOrders();
   }
 
   async function convertOrderToSale(order) {
@@ -300,7 +317,7 @@ export default function App() {
                       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>{o.customer?.name || "Noma'lum mijoz"} <span style={{ color: "#8a887e", fontFamily: "monospace", fontWeight: 400, fontSize: 12.5 }}>({o.customer_id})</span></div>
-                          <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}</div>
+                          <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}{o.order_no ? ` • #${o.order_no}` : ""}</div>
                         </div>
                         <div style={{ fontWeight: 700 }}>
                           Jami: {fmt(o.buyurtma_items.reduce((s, it) => s + it.price * it.qty, 0))}
@@ -309,8 +326,15 @@ export default function App() {
                       <div style={{ fontSize: 13.5, marginBottom: 10 }}>
                         {o.buyurtma_items.map((it) => `${it.product_name} x${it.qty}`).join(", ")}
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button className="mb-btn mb-btn-primary" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
+                      <div style={{ marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: orderStatusColor(o.status) }}>
+                        Holat: {ORDER_STATUS_LABELS[o.status] || o.status}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "qabul_qilindi")}>Qabul qilish</button>}
+                        {o.status === "qabul_qilindi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yigilmoqda")}>Yig'ilmoqda deb belgilash</button>}
+                        {o.status === "yigilmoqda" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yolda")}>Yo'lga chiqdi</button>}
+                        {o.status === "yolda" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yetkazildi")}>Yetkazildi</button>}
+                        <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
                         <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
                       </div>
                     </div>
@@ -527,17 +551,17 @@ function ReceiptContent({ data }) {
         </div>
       </div>
       {customer.delivery_lat && customer.delivery_lng && (
-  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-    <div style={{ textAlign: "center" }}>
-      <img
-        src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
-        alt="Manzil QR"
-        style={{ width: 90, height: 90 }}
-      />
-      <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>Yetkazib berish manzili</div>
-    </div>
-  </div>
-)}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+          <div style={{ textAlign: "center" }}>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
+              alt="Manzil QR"
+              style={{ width: 90, height: 90 }}
+            />
+            <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>Yetkazib berish manzili</div>
+          </div>
+        </div>
+      )}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginBottom: 14 }}>
         <thead><tr><th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #111" }}>Nomi</th><th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #111" }}>Soni</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Narxi</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Summa</th></tr></thead>
         <tbody>

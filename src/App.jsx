@@ -32,13 +32,13 @@ async function nextCustomerId() {
 
 const ORDER_STATUS_LABELS = {
   yangi: "Yangi", qabul_qilindi: "Qabul qilindi", yigilmoqda: "Yig'ilmoqda",
-  yolda: "Yo'lda", yetkazildi: "Yetkazildi", jarayonda: "Jarayonda", bekor_qilindi: "Bekor qilindi",
+  yolda: "Yo'lda", yetkazildi: "Yetkazildi", yakunlandi: "Sotuvga aylandi", bekor_qilindi: "Bekor qilindi",
 };
 function orderStatusColor(status) {
   if (status === "yangi") return "#8a887e";
   if (status === "qabul_qilindi") return "#2C6FA6";
   if (status === "yigilmoqda" || status === "yolda") return "#B8860B";
-  if (status === "yetkazildi") return "#2c7a4b";
+  if (status === "yetkazildi" || status === "yakunlandi") return "#2c7a4b";
   return "#a1281f";
 }
 
@@ -61,6 +61,7 @@ export default function App() {
   const [saleSearch, setSaleSearch] = useState("");
   const [qtyDraft, setQtyDraft] = useState({});
   const [paymentInput, setPaymentInput] = useState("");
+  const [convertingOrderId, setConvertingOrderId] = useState(null);
 
   const [custSearch, setCustSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
@@ -108,7 +109,7 @@ export default function App() {
     const { data } = await supabase
       .from("buyurtmalar")
       .select("*, buyurtma_items(*)")
-      .not("status", "in", "(bekor_qilindi,yetkazildi)")
+      .not("status", "in", "(bekor_qilindi,yetkazildi,yakunlandi)")
       .order("created_at", { ascending: false });
     const list = data || [];
     const customerIds = [...new Set(list.map((o) => o.customer_id))];
@@ -126,13 +127,12 @@ export default function App() {
     refreshOrders();
   }
 
-  async function convertOrderToSale(order) {
+  function convertOrderToSale(order) {
     if (!order.customer) return;
-    await supabase.from("buyurtmalar").update({ status: "jarayonda" }).eq("id", order.id);
+    setConvertingOrderId(order.id);
     setSaleCustomer(order.customer);
     setCart(order.buyurtma_items.map((it) => ({ productId: it.product_id, name: it.product_name, price: it.price, qty: it.qty })));
     setActiveTab("sale");
-    refreshOrders();
   }
   async function cancelOrder(order) {
     if (!confirm("Buyurtmani bekor qilishga ishonchingiz komilmi?")) return;
@@ -175,7 +175,7 @@ export default function App() {
     if (error) { setSaleError("Xatolik: " + error.message); return; }
     setSaleCustomer(data); setNewCustomerForm(null); setSaleError("");
   }
-  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); }
+  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); setConvertingOrderId(null); }
 
   const saleSearchResults = useMemo(() => {
     const q = saleSearch.trim().toLowerCase();
@@ -227,6 +227,12 @@ export default function App() {
     }
 
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
+
+    if (convertingOrderId) {
+      await supabase.from("buyurtmalar").update({ status: "yakunlandi" }).eq("id", convertingOrderId);
+      setConvertingOrderId(null);
+      refreshOrders();
+    }
 
     setBusy(false);
     setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at }, seller: sellerName });
@@ -289,19 +295,19 @@ export default function App() {
     <div style={{ fontFamily: "system-ui, sans-serif", minHeight: "100vh", background: PURPLE, color: "#161615" }}>
       <style>{appCss}</style>
       <div className="no-print">
-        <div style={{ background: PURPLE_DARK, padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <div style={{ color: "#fff" }}><LogoMark size={16} sub={false} /></div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ background: PURPLE_DARK, padding: "10px 20px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", borderBottom: `1px solid ${PURPLE_BORDER}` }}>
+          <img src="/logo.png" alt="MARBA" style={{ height: 42, width: 42, borderRadius: "50%", flexShrink: 0 }} />
+          <div style={{ width: 1, height: 28, background: PURPLE_BORDER, flexShrink: 0 }} />
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
+            <div className={`mb-tab ${activeTab === "sale" ? "active" : ""}`} onClick={() => setActiveTab("sale")}><ShoppingCart size={16} /> Yangi sotuv</div>
+            <div className={`mb-tab ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}><Inbox size={16} /> Buyurtmalar{orders.length > 0 ? ` (${orders.length})` : ""}</div>
+            <div className={`mb-tab ${activeTab === "customers" ? "active" : ""}`} onClick={() => setActiveTab("customers")}><Users size={16} /> Mijozlar</div>
+            <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
             <span style={{ color: "#d9d0e6", fontSize: 13.5 }}>Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b></span>
             <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
-        </div>
-
-        <div style={{ background: PURPLE_DARK, display: "flex", overflowX: "auto", borderBottom: `1px solid ${PURPLE_BORDER}` }}>
-          <div className={`mb-tab ${activeTab === "sale" ? "active" : ""}`} onClick={() => setActiveTab("sale")}><ShoppingCart size={16} /> Yangi sotuv</div>
-          <div className={`mb-tab ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}><Inbox size={16} /> Buyurtmalar{orders.length > 0 ? ` (${orders.length})` : ""}</div>
-          <div className={`mb-tab ${activeTab === "customers" ? "active" : ""}`} onClick={() => setActiveTab("customers")}><Users size={16} /> Mijozlar</div>
-          <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
         </div>
 
         <div style={{ padding: 20, maxWidth: 1400, margin: "0 auto" }}>
@@ -346,6 +352,11 @@ export default function App() {
 
           {activeTab === "sale" && (
             <div style={{ display: "grid", gap: 16 }}>
+              {convertingOrderId && (
+                <div style={{ background: "#fff4e0", border: "1px solid #f0c674", borderRadius: 10, padding: 12, fontSize: 13.5, color: "#7a5a00" }}>
+                  Buyurtmadan sotuvga aylantirilmoqda — yakunlangач buyurtma avtomatik yopiladi.
+                </div>
+              )}
               {!saleCustomer ? (
                 <div className="mb-card">
                   <div style={{ fontWeight: 700, marginBottom: 12 }}>1. Mijozni tanlang</div>

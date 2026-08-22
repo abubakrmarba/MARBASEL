@@ -45,6 +45,8 @@ function orderStatusColor(status) {
 export default function App() {
   const [session, setSession] = useState(null);
   const [sellerName, setSellerName] = useState("");
+  const [sellerName, setSellerName] = useState("");
+  const [sellerPhone, setSellerPhone] = useState("");
   const [loginName, setLoginName] = useState(null);
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -82,12 +84,14 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function initSeller(s) {
-    setSession(s);
-    const { data } = await supabase.from("sellers").select("name").eq("auth_user_id", s.user.id).maybeSingle();
-    setSellerName(data?.name || s.user.email.split("@")[0]);
-  }
+ const [sellerPhone, setSellerPhone] = useState("");
 
+  async function initSeller(s) {
+  setSession(s);
+  const { data } = await supabase.from("sellers").select("name, phone").eq("auth_user_id", s.user.id).maybeSingle();
+  setSellerName(data?.name || s.user.email.split("@")[0]);
+  setSellerPhone(data?.phone || "");
+}
   useEffect(() => { if (session) refreshProducts(); }, [session]);
   useEffect(() => { if (activeTab === "history" && session) refreshHistory(); }, [activeTab, session]);
   useEffect(() => { if (activeTab === "orders" && session) refreshOrders(); }, [activeTab, session]);
@@ -140,6 +144,10 @@ export default function App() {
     refreshOrders();
   }
 
+  async function savePhone(newPhone) {
+  await supabase.from("sellers").update({ phone: newPhone }).eq("auth_user_id", session.user.id);
+  setSellerPhone(newPhone);
+}
   async function doLogin() {
     if (!loginName) { setLoginError("Sotuvchini tanlang"); return; }
     setBusy(true);
@@ -305,7 +313,16 @@ export default function App() {
             <div className={`mb-tab ${activeTab === "history" ? "active" : ""}`} onClick={() => setActiveTab("history")}><History size={16} /> Tarix</div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ color: "#d9d0e6", fontSize: 13.5 }}>Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b></span>
+            <span
+  style={{ color: "#d9d0e6", fontSize: 13.5, cursor: "pointer" }}
+  onClick={() => {
+    const val = prompt("Telefon raqamingizni kiriting:", sellerPhone);
+    if (val !== null) savePhone(val.trim());
+  }}
+  title="Telefon raqamingizni kiritish uchun bosing"
+>
+  Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b>{sellerPhone ? "" : " (telefon kiritilmagan — bosing)"}
+</span>
             <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
         </div>

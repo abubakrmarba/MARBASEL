@@ -45,7 +45,6 @@ function orderStatusColor(status) {
 export default function App() {
   const [session, setSession] = useState(null);
   const [sellerName, setSellerName] = useState("");
-  const [sellerName, setSellerName] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
   const [loginName, setLoginName] = useState(null);
   const [loginPass, setLoginPass] = useState("");
@@ -84,14 +83,13 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
- const [sellerPhone, setSellerPhone] = useState("");
-
   async function initSeller(s) {
-  setSession(s);
-  const { data } = await supabase.from("sellers").select("name, phone").eq("auth_user_id", s.user.id).maybeSingle();
-  setSellerName(data?.name || s.user.email.split("@")[0]);
-  setSellerPhone(data?.phone || "");
-}
+    setSession(s);
+    const { data } = await supabase.from("sellers").select("name, phone").eq("auth_user_id", s.user.id).maybeSingle();
+    setSellerName(data?.name || s.user.email.split("@")[0]);
+    setSellerPhone(data?.phone || "");
+  }
+
   useEffect(() => { if (session) refreshProducts(); }, [session]);
   useEffect(() => { if (activeTab === "history" && session) refreshHistory(); }, [activeTab, session]);
   useEffect(() => { if (activeTab === "orders" && session) refreshOrders(); }, [activeTab, session]);
@@ -145,9 +143,10 @@ export default function App() {
   }
 
   async function savePhone(newPhone) {
-  await supabase.from("sellers").update({ phone: newPhone }).eq("auth_user_id", session.user.id);
-  setSellerPhone(newPhone);
-}
+    await supabase.from("sellers").update({ phone: newPhone }).eq("auth_user_id", session.user.id);
+    setSellerPhone(newPhone);
+  }
+
   async function doLogin() {
     if (!loginName) { setLoginError("Sotuvchini tanlang"); return; }
     setBusy(true);
@@ -314,15 +313,15 @@ export default function App() {
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
             <span
-  style={{ color: "#d9d0e6", fontSize: 13.5, cursor: "pointer" }}
-  onClick={() => {
-    const val = prompt("Telefon raqamingizni kiriting:", sellerPhone);
-    if (val !== null) savePhone(val.trim());
-  }}
-  title="Telefon raqamingizni kiritish uchun bosing"
->
-  Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b>{sellerPhone ? "" : " (telefon kiritilmagan — bosing)"}
-</span>
+              style={{ color: "#d9d0e6", fontSize: 13.5, cursor: "pointer" }}
+              onClick={() => {
+                const val = prompt("Telefon raqamingizni kiriting:", sellerPhone);
+                if (val !== null) savePhone(val.trim());
+              }}
+              title="Telefon raqamingizni kiritish uchun bosing"
+            >
+              Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b>{sellerPhone ? "" : " (telefon kiritilmagan — bosing)"}
+            </span>
             <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
         </div>
@@ -371,7 +370,7 @@ export default function App() {
             <div style={{ display: "grid", gap: 16 }}>
               {convertingOrderId && (
                 <div style={{ background: "#fff4e0", border: "1px solid #f0c674", borderRadius: 10, padding: 12, fontSize: 13.5, color: "#7a5a00" }}>
-                  Buyurtmadan sotuvga aylantirilmoqda — yakunlangач buyurtma avtomatik yopiladi.
+                  Buyurtmadan sotuvga aylantirilmoqda — yakunlangach buyurtma avtomatik yopiladi.
                 </div>
               )}
               {!saleCustomer ? (
@@ -572,8 +571,8 @@ function ReceiptContent({ data }) {
           </div>
         </div>
         <div style={{ textAlign: "right", fontSize: 12.5 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 4 }}><Instagram size={14} /> @marba_autoparts</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 10 }}><Send size={14} /> @marba_autoparts</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 4 }}><Instagram size={14} /> @marba_avtoparts</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 10 }}><Send size={14} /> @marba_zapchast</div>
           <div>Sana: {formatDate(purchase.date)}</div>
           <div>Sotuvchi: {seller}</div>
         </div>

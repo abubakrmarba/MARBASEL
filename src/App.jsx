@@ -340,6 +340,11 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700 }}>{o.customer?.name || "Noma'lum mijoz"} <span style={{ color: "#8a887e", fontFamily: "monospace", fontWeight: 400, fontSize: 12.5 }}>({o.customer_id})</span></div>
                           <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}{o.order_no ? ` • #${o.order_no}` : ""}</div>
+                        {(o.packed_by || o.driver_name) && (
+  <div style={{ fontSize: 12, color: "#2C6FA6", marginTop: 4 }}>
+    {o.packed_by ? `📦 Yig'di: ${o.packed_by}` : ""}{o.packed_by && o.driver_name ? " • " : ""}{o.driver_name ? `🚗 Haydovchi: ${o.driver_name}` : ""}
+  </div>
+)}
                         </div>
                         <div style={{ fontWeight: 700 }}>
                           Jami: {fmt(o.buyurtma_items.reduce((s, it) => s + it.price * it.qty, 0))}

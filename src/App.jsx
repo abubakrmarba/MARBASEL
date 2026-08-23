@@ -632,18 +632,19 @@ function ReceiptOverlay({ data, onClose }) {
 
 function ReceiptContent({ data }) {
   const { customer, purchase, seller, sellerPhoneForReceipt } = data;
+  const hasLocation = customer.delivery_lat && customer.delivery_lng;
   return (
-    <div style={{ padding: 24, color: "#111", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "start", gap: 10, borderBottom: "3px solid #111", paddingBottom: 14, marginBottom: 16 }}>
+    <div style={{ padding: 20, color: "#111", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "start", gap: 8, borderBottom: "2px solid #111", paddingBottom: 8, marginBottom: 10 }}>
         <div>
           {purchase.orderNo && (
             <img
               src={`https://barcode.tec-it.com/barcode.ashx?data=${purchase.orderNo}&code=Code128&translate-esc=on`}
               alt="Shtrix-kod"
-              style={{ height: 46, marginBottom: 6 }}
+              style={{ height: 34, marginBottom: 3 }}
             />
           )}
-          <div style={{ fontSize: 11, lineHeight: 1.7, textTransform: "lowercase" }}>
+          <div style={{ fontSize: 9.5, lineHeight: 1.5, textTransform: "lowercase" }}>
             <div>mijoz id: {customer.id}</div>
             <div>tel: {customer.phone || "—"}</div>
             {purchase.orderNo && <div>buyurtma id: #{purchase.orderNo}</div>}
@@ -652,30 +653,30 @@ function ReceiptContent({ data }) {
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <LogoMark size={20} />
-        </div>
-
-        <div style={{ textAlign: "right", fontSize: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 4 }}><Instagram size={13} /> @marba_avtoparts</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 8 }}><Send size={13} /> @marba_zapchast</div>
-          <div>Sana: {formatDate(purchase.date)}</div>
-          <div style={{ marginBottom: 8 }}>Sotuvchi: {seller}</div>
-          {customer.delivery_lat && customer.delivery_lng && (
-            <div>
+          <LogoMark size={16} />
+          {hasLocation && (
+            <div style={{ marginTop: 4 }}>
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
                 alt="Manzil QR"
-                style={{ width: 60, height: 60 }}
+                style={{ width: 50, height: 50 }}
               />
-              <div style={{ fontSize: 9.5, color: "#666", marginTop: 2 }}>Yetkazib berish manzili</div>
+              <div style={{ fontSize: 8, color: "#666" }}>manzil</div>
             </div>
           )}
         </div>
+
+        <div style={{ textAlign: "right", fontSize: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end", marginBottom: 2 }}><Instagram size={11} /> @marba_avtoparts</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end", marginBottom: 4 }}><Send size={11} /> @marba_zapchast</div>
+          <div>Sana: {formatDate(purchase.date)}</div>
+          <div>Sotuvchi: {seller}</div>
+        </div>
       </div>
 
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{customer.name} — {customer.viloyat}{customer.manzil ? `, ${customer.manzil}` : ""}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>{customer.name} — {customer.viloyat}{customer.manzil ? `, ${customer.manzil}` : ""}</div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 16 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 10 }}>
         <thead>
           <tr>
             <th style={excelTh}>Nomi</th>
@@ -696,19 +697,19 @@ function ReceiptContent({ data }) {
         </tbody>
       </table>
 
-      <div style={{ marginLeft: "auto", width: 260, fontSize: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderTop: "2px solid #111", paddingTop: 8 }}><span>Umumiy summa:</span><b>{fmt(purchase.total)}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}><span>Eski qarz:</span><b>{fmt(Math.max((customer.debt || 0) - purchase.total + purchase.paid, 0))}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>Hozirgi qarz:</span><b>{fmt(customer.debt)}</b></div>
+      <div style={{ marginLeft: "auto", width: 230, fontSize: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111", paddingTop: 6 }}><span>Umumiy summa:</span><b>{fmt(purchase.total)}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>Eski qarz:</span><b>{fmt(Math.max((customer.debt || 0) - purchase.total + purchase.paid, 0))}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>Hozirgi qarz:</span><b>{fmt(customer.debt)}</b></div>
       </div>
 
-      <div style={{ borderTop: "1px solid #ccc", marginTop: 18, paddingTop: 10, fontSize: 11, color: "#666", textAlign: "center" }}>MARBA AUTO PARTS — Xaridingiz uchun rahmat!</div>
+      <div style={{ borderTop: "1px solid #ccc", marginTop: 12, paddingTop: 6, fontSize: 9.5, color: "#666", textAlign: "center" }}>MARBA AUTO PARTS — Xaridingiz uchun rahmat!</div>
     </div>
   );
 }
 
-const excelTh = { textAlign: "left", padding: "7px 8px", border: "1px solid #111", background: "#f3f2ec", fontWeight: 700, fontSize: 11.5, textTransform: "uppercase" };
-const excelTd = { padding: "7px 8px", border: "1px solid #999" };
+const excelTh = { textAlign: "left", padding: "3px 5px", border: "1px solid #111", background: "#f3f2ec", fontWeight: 700, fontSize: 9.5, textTransform: "uppercase" };
+const excelTd = { padding: "3px 5px", border: "1px solid #999" };
 
 const loginCss = `
   * { box-sizing: border-box; }

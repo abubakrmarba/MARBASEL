@@ -241,13 +241,13 @@ export default function App() {
 
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
 
+    // Chop etish faqat sotuv/to'lovni yozadi va chekni chiqaradi.
+    // Buyurtma holati o'zgarmaydi - u hali Buyurtmalar bo'limida qoladi va
+    // yig'uv/haydovchi bosqichlaridan o'tib, haydovchi "Yetkazildi" bosganda
+    // haqiqiy yakunlanadi.
     const orderNoForReceipt = convertingOrderNo;
-    if (convertingOrderId) {
-      await supabase.from("buyurtmalar").update({ status: "yakunlandi" }).eq("id", convertingOrderId);
-      setConvertingOrderId(null);
-      setConvertingOrderNo(null);
-      refreshOrders();
-    }
+    setConvertingOrderId(null);
+    setConvertingOrderNo(null);
 
     setBusy(false);
     setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at, orderNo: orderNoForReceipt }, seller: sellerName });

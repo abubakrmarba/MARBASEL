@@ -63,6 +63,7 @@ export default function App() {
   const [qtyDraft, setQtyDraft] = useState({});
   const [paymentInput, setPaymentInput] = useState("");
   const [convertingOrderId, setConvertingOrderId] = useState(null);
+  const [convertingOrderNo, setConvertingOrderNo] = useState(null);
 
   const [custSearch, setCustSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
@@ -71,7 +72,6 @@ export default function App() {
 
   const [historyRows, setHistoryRows] = useState([]);
   const [receipt, setReceipt] = useState(null);
-  const [packLabel, setPackLabel] = useState(null);
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -130,15 +130,14 @@ export default function App() {
     refreshOrders();
   }
 
-  async function acceptOrder(order) {
-    await supabase.from("buyurtmalar").update({ status: "qabul_qilindi" }).eq("id", order.id);
-    refreshOrders();
-    setPackLabel(order);
-  }
-
-  function convertOrderToSale(order) {
+  async function convertOrderToSale(order) {
     if (!order.customer) return;
+    if (order.status === "yangi") {
+      await supabase.from("buyurtmalar").update({ status: "qabul_qilindi" }).eq("id", order.id);
+      refreshOrders();
+    }
     setConvertingOrderId(order.id);
+    setConvertingOrderNo(order.order_no);
     setSaleCustomer(order.customer);
     setCart(order.buyurtma_items.map((it) => ({ productId: it.product_id, name: it.product_name, price: it.price, qty: it.qty })));
     setActiveTab("sale");
@@ -189,7 +188,7 @@ export default function App() {
     if (error) { setSaleError("Xatolik: " + error.message); return; }
     setSaleCustomer(data); setNewCustomerForm(null); setSaleError("");
   }
-  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); setConvertingOrderId(null); }
+  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); setConvertingOrderId(null); setConvertingOrderNo(null); }
 
   const saleSearchResults = useMemo(() => {
     const q = saleSearch.trim().toLowerCase();
@@ -242,14 +241,16 @@ export default function App() {
 
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
 
+    const orderNoForReceipt = convertingOrderNo;
     if (convertingOrderId) {
       await supabase.from("buyurtmalar").update({ status: "yakunlandi" }).eq("id", convertingOrderId);
       setConvertingOrderId(null);
+      setConvertingOrderNo(null);
       refreshOrders();
     }
 
     setBusy(false);
-    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at }, seller: sellerName });
+    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at, orderNo: orderNoForReceipt }, seller: sellerName });
     setCart([]); setPaymentInput(""); setSaleCustomer(updatedCustomer);
     refreshProducts();
   }
@@ -364,14 +365,13 @@ export default function App() {
                         Holat: {ORDER_STATUS_LABELS[o.status] || o.status}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => acceptOrder(o)}>Qabul qilish</button>}
-                        {(o.status === "qabul_qilindi" || o.status === "yigilmoqda") && <button className="mb-btn mb-btn-ghost" onClick={() => setPackLabel(o)}>Yorliqni chop etish</button>}
-                        <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
+                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => convertOrderToSale(o)}>Qabul qilish</button>}
+                        {o.status !== "yangi" && <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>}
                         <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
                       </div>
                       {(o.status === "qabul_qilindi" || o.status === "yigilmoqda" || o.status === "yolda") && (
                         <div style={{ fontSize: 11.5, color: "#8a887e", marginTop: 8, fontStyle: "italic" }}>
-                          {o.status === "qabul_qilindi" && "Yig'uv stansiyasida skanerlanishi kutilmoqda."}
+                          {o.status === "qabul_qilindi" && "Yig'uv stansiyasida skanerlanishi kutilmoqda (chekdagi shtrix-kod skanerlanadi)."}
                           {o.status === "yigilmoqda" && "Haydovchi kutilmoqda."}
                           {o.status === "yolda" && "Haydovchi yo'lda - Yetkazildi tugmasi haydovchi ilovasida bosiladi."}
                         </div>
@@ -553,42 +553,6 @@ export default function App() {
       </div>
 
       {receipt && <ReceiptOverlay data={receipt} onClose={() => setReceipt(null)} />}
-      {packLabel && <PackLabelOverlay order={packLabel} onClose={() => setPackLabel(null)} />}
-    </div>
-  );
-}
-
-function PackLabelOverlay({ order, onClose }) {
-  const itemsText = (order.buyurtma_items || []).map((it) => `${it.product_name} x${it.qty}`).join(", ");
-  return (
-    <>
-      <div className="no-print" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }} onClick={onClose}>
-        <div style={{ background: "#fff", borderRadius: 12, maxWidth: 420, width: "100%" }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: 12, borderBottom: "1px solid #eee" }}>
-            <button className="mb-btn mb-btn-primary" onClick={() => window.print()}><Printer size={14} style={{ verticalAlign: -2 }} /> Yorliqni chop etish</button>
-            <button className="mb-btn mb-btn-ghost" onClick={onClose}><X size={16} /></button>
-          </div>
-          <PackLabelContent order={order} itemsText={itemsText} />
-        </div>
-      </div>
-      <div className="print-only"><PackLabelContent order={order} itemsText={itemsText} /></div>
-    </>
-  );
-}
-
-function PackLabelContent({ order, itemsText }) {
-  return (
-    <div style={{ padding: 20, textAlign: "center", fontFamily: "system-ui, sans-serif", color: "#111" }}>
-      <div style={{ fontWeight: 900, fontStyle: "italic", fontSize: 16, letterSpacing: 1, marginBottom: 4 }}>MARBA AUTO PARTS</div>
-      <div style={{ fontSize: 11, color: "#666", marginBottom: 14 }}>Yig'uv yorlig'i</div>
-      <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: 2, marginBottom: 14 }}>#{order.order_no}</div>
-      <img
-        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(String(order.order_no))}`}
-        alt="Buyurtma QR"
-        style={{ width: 150, height: 150, marginBottom: 14 }}
-      />
-      <div style={{ fontSize: 13, fontWeight: 700 }}>{order.customer?.name || ""}</div>
-      <div style={{ fontSize: 11.5, color: "#666", marginTop: 4 }}>{itemsText}</div>
     </div>
   );
 }
@@ -640,6 +604,16 @@ function ReceiptContent({ data }) {
             />
             <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>Yetkazib berish manzili</div>
           </div>
+        </div>
+      )}
+      {purchase.orderNo && (
+        <div style={{ textAlign: "center", marginBottom: 14 }}>
+          <img
+            src={`https://barcode.tec-it.com/barcode.ashx?data=${purchase.orderNo}&code=Code128&translate-esc=on`}
+            alt="Buyurtma shtrix-kodi"
+            style={{ height: 60 }}
+          />
+          <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>Buyurtma #{purchase.orderNo}</div>
         </div>
       )}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginBottom: 14 }}>

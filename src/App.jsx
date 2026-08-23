@@ -71,6 +71,8 @@ export default function App() {
   const [payAmount, setPayAmount] = useState("");
 
   const [historyRows, setHistoryRows] = useState([]);
+  const [historySearch, setHistorySearch] = useState("");
+  const [selectedSale, setSelectedSale] = useState(null);
   const [receipt, setReceipt] = useState(null);
 
   const [orders, setOrders] = useState([]);
@@ -196,6 +198,16 @@ export default function App() {
     return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [saleSearch, products]);
 
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return historyRows;
+    return historyRows.filter((r) =>
+      r.customer_id?.toLowerCase().includes(q) ||
+      r.customers?.name?.toLowerCase().includes(q) ||
+      String(r.order_no || "").includes(q)
+    );
+  }, [historySearch, historyRows]);
+
   function addToCart(product) {
     const qty = Math.max(1, Math.min(Number(qtyDraft[product.id]) || 1, product.qty));
     if (product.qty <= 0) return;
@@ -223,8 +235,9 @@ export default function App() {
     const total = cartTotal, paid = paidNum;
     const newDebt = Math.max((saleCustomer.debt || 0) + total - paid, 0);
 
+    const orderNoAtStart = convertingOrderNo;
     const { data: sale, error: saleErr } = await supabase.from("sales")
-      .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid })
+      .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid, order_no: orderNoAtStart })
       .select("*").single();
     if (saleErr) { setSaleError("Xatolik: " + saleErr.message); setBusy(false); return; }
 
@@ -245,12 +258,11 @@ export default function App() {
     // Buyurtma holati o'zgarmaydi - u hali Buyurtmalar bo'limida qoladi va
     // yig'uv/haydovchi bosqichlaridan o'tib, haydovchi "Yetkazildi" bosganda
     // haqiqiy yakunlanadi.
-    const orderNoForReceipt = convertingOrderNo;
     setConvertingOrderId(null);
     setConvertingOrderNo(null);
 
     setBusy(false);
-    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at, orderNo: orderNoForReceipt }, seller: sellerName });
+    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at, orderNo: orderNoAtStart }, seller: sellerName });
     setCart([]); setPaymentInput(""); setSaleCustomer(updatedCustomer);
     refreshProducts();
   }
@@ -531,21 +543,62 @@ export default function App() {
           )}
 
           {activeTab === "history" && (
-            <div className="mb-card">
-              {historyRows.length === 0 ? <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>Hali sotuvlar tarixi yo'q.</div> : (
-                <table className="mb-table">
-                  <thead><tr><th>Sana</th><th>Mijoz</th><th>Sotuvchi</th><th>Jami</th><th>To'landi</th></tr></thead>
-                  <tbody>
-                    {historyRows.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ fontSize: 12.5 }}>{formatDate(r.created_at)}</td>
-                        <td>{r.customers?.name} <span style={{ color: "#8a887e", fontFamily: "monospace", fontSize: 11.5 }}>({r.customer_id})</span></td>
-                        <td>{r.seller_name}</td><td>{fmt(r.total)}</td>
-                        <td style={{ color: r.paid < r.total ? "#a1281f" : "#2c7a4b" }}>{fmt(r.paid)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div style={{ display: "grid", gap: 14 }}>
+              {!selectedSale ? (
+                <>
+                  <input
+                    className="mb-input"
+                    style={{ maxWidth: 360 }}
+                    placeholder="Mijoz ID, ism yoki buyurtma raqami..."
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                  />
+                  <div className="mb-card">
+                    {filteredHistory.length === 0 ? (
+                      <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>
+                        {historyRows.length === 0 ? "Hali sotuvlar tarixi yo'q." : "Hech narsa topilmadi."}
+                      </div>
+                    ) : (
+                      <table className="mb-table">
+                        <thead><tr><th>Sana</th><th>Mijoz</th><th>Buyurtma</th><th>Sotuvchi</th><th>Jami</th><th>To'landi</th></tr></thead>
+                        <tbody>
+                          {filteredHistory.map((r) => (
+                            <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => setSelectedSale(r)}>
+                              <td style={{ fontSize: 12.5 }}>{formatDate(r.created_at)}</td>
+                              <td>{r.customers?.name} <span style={{ color: "#8a887e", fontFamily: "monospace", fontSize: 11.5 }}>({r.customer_id})</span></td>
+                              <td style={{ fontSize: 12.5, color: "#8a887e" }}>{r.order_no ? `#${r.order_no}` : "—"}</td>
+                              <td>{r.seller_name}</td><td>{fmt(r.total)}</td>
+                              <td style={{ color: r.paid < r.total ? "#a1281f" : "#2c7a4b" }}>{fmt(r.paid)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mb-card">
+                  <button className="mb-btn mb-btn-ghost" style={{ marginBottom: 14 }} onClick={() => setSelectedSale(null)}><ChevronLeft size={14} style={{ verticalAlign: -2 }} /> Orqaga</button>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#8a887e", fontWeight: 700 }}>MIJOZ ID: {selectedSale.customer_id}</div>
+                      <div style={{ fontSize: 17, fontWeight: 700, margin: "3px 0" }}>{selectedSale.customers?.name}</div>
+                      <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(selectedSale.created_at)} • Sotuvchi: {selectedSale.seller_name}{selectedSale.order_no ? ` • Buyurtma #${selectedSale.order_no}` : ""}</div>
+                    </div>
+                  </div>
+                  <table className="mb-table">
+                    <thead><tr><th>Nomi</th><th>Soni</th><th>Narxi</th><th>Summa</th></tr></thead>
+                    <tbody>
+                      {(selectedSale.sale_items || []).map((it) => (
+                        <tr key={it.id}><td>{it.product_name}</td><td>{it.qty}</td><td>{fmt(it.price)}</td><td>{fmt(it.price * it.qty)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ textAlign: "right", marginTop: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>Jami: {fmt(selectedSale.total)}</div>
+                    <div style={{ color: selectedSale.paid < selectedSale.total ? "#a1281f" : "#2c7a4b", fontWeight: 600 }}>To'landi: {fmt(selectedSale.paid)}</div>
+                  </div>
+                </div>
               )}
             </div>
           )}

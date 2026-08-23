@@ -698,9 +698,9 @@ function ReceiptContent({ data }) {
       </table>
 
       <div style={{ marginLeft: "auto", width: 230, fontSize: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111", paddingTop: 6 }}><span>Umumiy summa:</span><b>{fmt(purchase.total)}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>Eski qarz:</span><b>{fmt(Math.max((customer.debt || 0) - purchase.total + purchase.paid, 0))}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>Hozirgi qarz:</span><b>{fmt(customer.debt)}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111", paddingTop: 6 }}><span>umumiy summa:</span><b>{fmt(purchase.total)}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>eski qarz:</span><b>{fmt(Math.max((customer.debt || 0) - purchase.total + purchase.paid, 0))}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>hozirgi qarz:</span><b>{fmt(customer.debt)}</b></div>
       </div>
 
       <div style={{ borderTop: "1px solid #ccc", marginTop: 12, paddingTop: 6, fontSize: 9.5, color: "#666", textAlign: "center" }}>MARBA AUTO PARTS — Xaridingiz uchun rahmat!</div>

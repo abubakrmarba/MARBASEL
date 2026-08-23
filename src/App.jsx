@@ -340,30 +340,34 @@ export default function App() {
                         <div>
                           <div style={{ fontWeight: 700 }}>{o.customer?.name || "Noma'lum mijoz"} <span style={{ color: "#8a887e", fontFamily: "monospace", fontWeight: 400, fontSize: 12.5 }}>({o.customer_id})</span></div>
                           <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}{o.order_no ? ` • #${o.order_no}` : ""}</div>
-                        {(o.packed_by || o.driver_name) && (
-  <div style={{ fontSize: 12, color: "#2C6FA6", marginTop: 4 }}>
-    {o.packed_by ? `📦 Yig'di: ${o.packed_by}` : ""}{o.packed_by && o.driver_name ? " • " : ""}{o.driver_name ? `🚗 Haydovchi: ${o.driver_name}` : ""}
-  </div>
-)}
                         </div>
                         <div style={{ fontWeight: 700 }}>
                           Jami: {fmt(o.buyurtma_items.reduce((s, it) => s + it.price * it.qty, 0))}
                         </div>
                       </div>
-                      <div style={{ fontSize: 13.5, marginBottom: 10 }}>
+                      <div style={{ fontSize: 13.5, marginBottom: 6 }}>
                         {o.buyurtma_items.map((it) => `${it.product_name} x${it.qty}`).join(", ")}
                       </div>
+                      {(o.packed_by || o.driver_name) && (
+                        <div style={{ fontSize: 12, color: "#2C6FA6", marginBottom: 6 }}>
+                          {o.packed_by ? "📦 Yig'di: " + o.packed_by : ""}{o.packed_by && o.driver_name ? " • " : ""}{o.driver_name ? "🚗 Haydovchi: " + o.driver_name : ""}
+                        </div>
+                      )}
                       <div style={{ marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: orderStatusColor(o.status) }}>
                         Holat: {ORDER_STATUS_LABELS[o.status] || o.status}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "qabul_qilindi")}>Qabul qilish</button>}
-                        {o.status === "qabul_qilindi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yigilmoqda")}>Yig'ilmoqda deb belgilash</button>}
-                        {o.status === "yigilmoqda" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yolda")}>Yo'lga chiqdi</button>}
-                        {o.status === "yolda" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yetkazildi")}>Yetkazildi</button>}
                         <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
                         <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
                       </div>
+                      {(o.status === "qabul_qilindi" || o.status === "yigilmoqda" || o.status === "yolda") && (
+                        <div style={{ fontSize: 11.5, color: "#8a887e", marginTop: 8, fontStyle: "italic" }}>
+                          {o.status === "qabul_qilindi" && "Yig'uv stansiyasida skanerlanishi kutilmoqda."}
+                          {o.status === "yigilmoqda" && "Haydovchi kutilmoqda."}
+                          {o.status === "yolda" && "Haydovchi yo'lda - Yetkazildi tugmasi haydovchi ilovasida bosiladi."}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -71,6 +71,7 @@ export default function App() {
 
   const [historyRows, setHistoryRows] = useState([]);
   const [receipt, setReceipt] = useState(null);
+  const [packLabel, setPackLabel] = useState(null);
 
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -127,6 +128,12 @@ export default function App() {
   async function setOrderStatus(order, status) {
     await supabase.from("buyurtmalar").update({ status }).eq("id", order.id);
     refreshOrders();
+  }
+
+  async function acceptOrder(order) {
+    await supabase.from("buyurtmalar").update({ status: "qabul_qilindi" }).eq("id", order.id);
+    refreshOrders();
+    setPackLabel(order);
   }
 
   function convertOrderToSale(order) {
@@ -357,7 +364,8 @@ export default function App() {
                         Holat: {ORDER_STATUS_LABELS[o.status] || o.status}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "qabul_qilindi")}>Qabul qilish</button>}
+                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => acceptOrder(o)}>Qabul qilish</button>}
+                        {(o.status === "qabul_qilindi" || o.status === "yigilmoqda") && <button className="mb-btn mb-btn-ghost" onClick={() => setPackLabel(o)}>Yorliqni chop etish</button>}
                         <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
                         <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
                       </div>
@@ -545,6 +553,42 @@ export default function App() {
       </div>
 
       {receipt && <ReceiptOverlay data={receipt} onClose={() => setReceipt(null)} />}
+      {packLabel && <PackLabelOverlay order={packLabel} onClose={() => setPackLabel(null)} />}
+    </div>
+  );
+}
+
+function PackLabelOverlay({ order, onClose }) {
+  const itemsText = (order.buyurtma_items || []).map((it) => `${it.product_name} x${it.qty}`).join(", ");
+  return (
+    <>
+      <div className="no-print" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, zIndex: 50 }} onClick={onClose}>
+        <div style={{ background: "#fff", borderRadius: 12, maxWidth: 420, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: 12, borderBottom: "1px solid #eee" }}>
+            <button className="mb-btn mb-btn-primary" onClick={() => window.print()}><Printer size={14} style={{ verticalAlign: -2 }} /> Yorliqni chop etish</button>
+            <button className="mb-btn mb-btn-ghost" onClick={onClose}><X size={16} /></button>
+          </div>
+          <PackLabelContent order={order} itemsText={itemsText} />
+        </div>
+      </div>
+      <div className="print-only"><PackLabelContent order={order} itemsText={itemsText} /></div>
+    </>
+  );
+}
+
+function PackLabelContent({ order, itemsText }) {
+  return (
+    <div style={{ padding: 20, textAlign: "center", fontFamily: "system-ui, sans-serif", color: "#111" }}>
+      <div style={{ fontWeight: 900, fontStyle: "italic", fontSize: 16, letterSpacing: 1, marginBottom: 4 }}>MARBA AUTO PARTS</div>
+      <div style={{ fontSize: 11, color: "#666", marginBottom: 14 }}>Yig'uv yorlig'i</div>
+      <div style={{ fontSize: 42, fontWeight: 900, letterSpacing: 2, marginBottom: 14 }}>#{order.order_no}</div>
+      <img
+        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(String(order.order_no))}`}
+        alt="Buyurtma QR"
+        style={{ width: 150, height: 150, marginBottom: 14 }}
+      />
+      <div style={{ fontSize: 13, fontWeight: 700 }}>{order.customer?.name || ""}</div>
+      <div style={{ fontSize: 11.5, color: "#666", marginTop: 4 }}>{itemsText}</div>
     </div>
   );
 }

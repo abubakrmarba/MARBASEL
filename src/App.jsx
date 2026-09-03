@@ -25,9 +25,9 @@ function LogoMark({ size = 20, sub = true }) {
 
 async function nextCustomerId() {
   const { data } = await supabase.from("customers").select("id").order("id", { ascending: false }).limit(1);
-  const last = data && data[0] ? data[0].id.trim() : "00000000";
+  const last = data && data[0] ? data[0].id.trim() : "0000";
   const next = (parseInt(last, 10) || 0) + 1;
-  return String(next).padStart(8, "0");
+  return String(next).padStart(4, "0");
 }
 
 const ORDER_STATUS_LABELS = {

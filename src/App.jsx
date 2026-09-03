@@ -178,7 +178,7 @@ export default function App() {
   async function searchCustomer() {
     const id = customerIdInput.trim();
     setSaleError("");
-    if (!/^\d{8}$/.test(id)) { setSaleError("Mijoz ID 8 ta raqamdan iborat bo'lishi kerak"); return; }
+    if (!/^\d{4}$/.test(id)) { setSaleError("Mijoz ID 4 ta raqamdan iborat bo'lishi kerak"); return; }
     const { data } = await supabase.from("customers").select("*").eq("id", id).maybeSingle();
     if (data) { setSaleCustomer(data); setNewCustomerForm(null); }
     else setSaleError("Bunday ID topilmadi. Yangi mijoz yarating.");
@@ -414,8 +414,8 @@ export default function App() {
                   {!newCustomerForm ? (
                     <>
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <input className="mb-input" placeholder="Mijoz ID (8 xonali)" value={customerIdInput}
-                          onChange={(e) => setCustomerIdInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                        <input className="mb-input" placeholder="Mijoz ID (4 xonali)" value={customerIdInput}
+                          onChange={(e) => setCustomerIdInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
                           onKeyDown={(e) => e.key === "Enter" && searchCustomer()} />
                         <button className="mb-btn mb-btn-dark" onClick={searchCustomer}><Search size={15} /></button>
                       </div>

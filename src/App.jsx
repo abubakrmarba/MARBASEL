@@ -24,10 +24,14 @@ function LogoMark({ size = 20, sub = true }) {
 }
 
 async function nextCustomerId() {
-  const { data } = await supabase.from("customers").select("id").order("id", { ascending: false }).limit(1);
-  const last = data && data[0] ? data[0].id.trim() : "00000000";
-  const next = (parseInt(last, 10) || 0) + 1;
-  return String(next).padStart(8, "0");
+  const { data } = await supabase.from("customers").select("id");
+  const nums = (data || [])
+    .map((c) => c.id.trim())
+    .filter((id) => id.length === 4)
+    .map((id) => parseInt(id, 10))
+    .filter((n) => !isNaN(n));
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return String(next).padStart(4, "0");
 }
 
 const ORDER_STATUS_LABELS = {

@@ -24,15 +24,12 @@ function LogoMark({ size = 20, sub = true }) {
 }
 
 async function nextCustomerId() {
-  const { data } = await supabase.from("customers").select("id");
-  const nums = (data || [])
-    .map((c) => c.id.trim())
-    .filter((id) => id.length === 4)
-    .map((id) => parseInt(id, 10))
-    .filter((n) => !isNaN(n));
-  const next = (nums.length ? Math.max(...nums) : 0) + 1;
-  return String(next).padStart(4, "0");
+  const { data } = await supabase.from("customers").select("id").order("id", { ascending: false }).limit(1);
+  const last = data && data[0] ? data[0].id.trim() : "00000000";
+  const next = (parseInt(last, 10) || 0) + 1;
+  return String(next).padStart(8, "0");
 }
+
 const ORDER_STATUS_LABELS = {
   yangi: "Yangi", qabul_qilindi: "Qabul qilindi", yigilmoqda: "Yig'ilmoqda",
   yolda: "Yo'lda", yetkazildi: "Yetkazildi", yakunlandi: "Sotuvga aylandi", bekor_qilindi: "Bekor qilindi",
@@ -66,7 +63,6 @@ export default function App() {
   const [qtyDraft, setQtyDraft] = useState({});
   const [paymentInput, setPaymentInput] = useState("");
   const [convertingOrderId, setConvertingOrderId] = useState(null);
-  const [convertingOrderNo, setConvertingOrderNo] = useState(null);
 
   const [custSearch, setCustSearch] = useState("");
   const [customerResults, setCustomerResults] = useState([]);
@@ -74,8 +70,6 @@ export default function App() {
   const [payAmount, setPayAmount] = useState("");
 
   const [historyRows, setHistoryRows] = useState([]);
-  const [historySearch, setHistorySearch] = useState("");
-  const [selectedSale, setSelectedSale] = useState(null);
   const [receipt, setReceipt] = useState(null);
 
   const [orders, setOrders] = useState([]);
@@ -135,19 +129,11 @@ export default function App() {
     refreshOrders();
   }
 
-  async function convertOrderToSale(order) {
+  function convertOrderToSale(order) {
     if (!order.customer) return;
-    if (order.status === "yangi") {
-      await supabase.from("buyurtmalar").update({ status: "qabul_qilindi" }).eq("id", order.id);
-      refreshOrders();
-    }
     setConvertingOrderId(order.id);
-    setConvertingOrderNo(order.order_no);
     setSaleCustomer(order.customer);
-    setCart(order.buyurtma_items.map((it) => {
-      const prod = products.find((p) => p.id === it.product_id);
-      return { productId: it.product_id, name: it.product_name, price: it.price, qty: it.qty, birlik: prod?.birlik || "dona" };
-    }));
+    setCart(order.buyurtma_items.map((it) => ({ productId: it.product_id, name: it.product_name, price: it.price, qty: it.qty })));
     setActiveTab("sale");
   }
   async function cancelOrder(order) {
@@ -178,7 +164,7 @@ export default function App() {
   async function searchCustomer() {
     const id = customerIdInput.trim();
     setSaleError("");
-    if (!/^\d{4}$/.test(id)) { setSaleError("Mijoz ID 4 ta raqamdan iborat bo'lishi kerak"); return; }
+    if (!/^\d{4,8}$/.test(id)) { setSaleError("Mijoz ID 4 yoki 8 ta raqamdan iborat bo'lishi kerak"); return; }
     const { data } = await supabase.from("customers").select("*").eq("id", id).maybeSingle();
     if (data) { setSaleCustomer(data); setNewCustomerForm(null); }
     else setSaleError("Bunday ID topilmadi. Yangi mijoz yarating.");
@@ -196,23 +182,17 @@ export default function App() {
     if (error) { setSaleError("Xatolik: " + error.message); return; }
     setSaleCustomer(data); setNewCustomerForm(null); setSaleError("");
   }
-  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); setConvertingOrderId(null); setConvertingOrderNo(null); }
+  function changeCustomer() { setSaleCustomer(null); setCustomerIdInput(""); setCart([]); setPaymentInput(""); setSaleError(""); setConvertingOrderId(null); }
 
   const saleSearchResults = useMemo(() => {
     const q = saleSearch.trim().toLowerCase();
     if (!q) return [];
-    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+    const terms = q.split(/\s+/).filter(Boolean);
+    return products.filter((p) => {
+      const nameLower = p.name.toLowerCase();
+      return terms.every((term) => nameLower.includes(term));
+    }).slice(0, 8);
   }, [saleSearch, products]);
-
-  const filteredHistory = useMemo(() => {
-    const q = historySearch.trim().toLowerCase();
-    if (!q) return historyRows;
-    return historyRows.filter((r) =>
-      r.customer_id?.toLowerCase().includes(q) ||
-      r.customers?.name?.toLowerCase().includes(q) ||
-      String(r.order_no || "").includes(q)
-    );
-  }, [historySearch, historyRows]);
 
   function addToCart(product) {
     const qty = Math.max(1, Math.min(Number(qtyDraft[product.id]) || 1, product.qty));
@@ -224,7 +204,7 @@ export default function App() {
         copy[idx] = { ...copy[idx], qty: Math.min(copy[idx].qty + qty, product.qty) };
         return copy;
       }
-      return [...prev, { productId: product.id, name: product.name, price: product.price, qty, birlik: product.birlik || "dona" }];
+      return [...prev, { productId: product.id, name: product.name, price: product.price, qty }];
     });
     setQtyDraft((d) => ({ ...d, [product.id]: 1 }));
   }
@@ -241,9 +221,8 @@ export default function App() {
     const total = cartTotal, paid = paidNum;
     const newDebt = Math.max((saleCustomer.debt || 0) + total - paid, 0);
 
-    const orderNoAtStart = convertingOrderNo;
     const { data: sale, error: saleErr } = await supabase.from("sales")
-      .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid, order_no: orderNoAtStart })
+      .insert({ customer_id: saleCustomer.id, seller_name: sellerName, total, paid })
       .select("*").single();
     if (saleErr) { setSaleError("Xatolik: " + saleErr.message); setBusy(false); return; }
 
@@ -260,15 +239,14 @@ export default function App() {
 
     const { data: updatedCustomer } = await supabase.from("customers").update({ debt: newDebt }).eq("id", saleCustomer.id).select("*").single();
 
-    // Chop etish faqat sotuv/to'lovni yozadi va chekni chiqaradi.
-    // Buyurtma holati o'zgarmaydi - u hali Buyurtmalar bo'limida qoladi va
-    // yig'uv/haydovchi bosqichlaridan o'tib, haydovchi "Yetkazildi" bosganda
-    // haqiqiy yakunlanadi.
-    setConvertingOrderId(null);
-    setConvertingOrderNo(null);
+    if (convertingOrderId) {
+      await supabase.from("buyurtmalar").update({ status: "yakunlandi" }).eq("id", convertingOrderId);
+      setConvertingOrderId(null);
+      refreshOrders();
+    }
 
     setBusy(false);
-    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at, orderNo: orderNoAtStart }, seller: sellerName, sellerPhoneForReceipt: sellerPhone });
+    setReceipt({ customer: updatedCustomer, purchase: { ...sale, items: cart, date: sale.created_at }, seller: sellerName });
     setCart([]); setPaymentInput(""); setSaleCustomer(updatedCustomer);
     refreshProducts();
   }
@@ -346,7 +324,7 @@ export default function App() {
               }}
               title="Telefon raqamingizni kiritish uchun bosing"
             >
-              Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b>{sellerPhone ? "" : " (telefon kiritilmagan — bosing)"}
+              Sotuvchi: <b style={{ color: "#fff" }}>{sellerName}</b>{sellerPhone ? "" : " (telefon kiritilmagan - bosing)"}
             </span>
             <button className="mb-btn mb-btn-ghost" style={{ color: "#fff", borderColor: PURPLE_BORDER, display: "flex", alignItems: "center", gap: 6, padding: "8px 12px" }} onClick={doLogout}><LogOut size={15} /> Chiqish</button>
           </div>
@@ -365,7 +343,7 @@ export default function App() {
                       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>{o.customer?.name || "Noma'lum mijoz"} <span style={{ color: "#8a887e", fontFamily: "monospace", fontWeight: 400, fontSize: 12.5 }}>({o.customer_id})</span></div>
-                          <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}{o.order_no ? ` • #${o.order_no}` : ""}</div>
+                          <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(o.created_at)}{o.order_no ? ` \u2022 #${o.order_no}` : ""}</div>
                         </div>
                         <div style={{ fontWeight: 700 }}>
                           Jami: {fmt(o.buyurtma_items.reduce((s, it) => s + it.price * it.qty, 0))}
@@ -383,15 +361,14 @@ export default function App() {
                         Holat: {ORDER_STATUS_LABELS[o.status] || o.status}
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => convertOrderToSale(o)}>Qabul qilish</button>}
-                        {o.status !== "yangi" && <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>}
+                        {o.status === "yangi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "qabul_qilindi")}>Qabul qilish</button>}
+                        {o.status === "qabul_qilindi" && <button className="mb-btn mb-btn-primary" onClick={() => setOrderStatus(o, "yigilmoqda")}>Yig'ilmoqda deb belgilash</button>}
+                        <button className="mb-btn mb-btn-dark" onClick={() => convertOrderToSale(o)}>Sotuvga aylantirish</button>
                         <button className="mb-btn mb-btn-danger" onClick={() => cancelOrder(o)}>Bekor qilish</button>
                       </div>
-                      {(o.status === "qabul_qilindi" || o.status === "yigilmoqda" || o.status === "yolda") && (
+                      {(o.status === "yigilmoqda" || o.status === "yolda") && (
                         <div style={{ fontSize: 11.5, color: "#8a887e", marginTop: 8, fontStyle: "italic" }}>
-                          {o.status === "qabul_qilindi" && "Yig'uv stansiyasida skanerlanishi kutilmoqda (chekdagi shtrix-kod skanerlanadi)."}
-                          {o.status === "yigilmoqda" && "Haydovchi kutilmoqda."}
-                          {o.status === "yolda" && "Haydovchi yo'lda - Yetkazildi tugmasi haydovchi ilovasida bosiladi."}
+                          {o.status === "yigilmoqda" ? "Yig'uv stansiyasida skanerlanishi kutilmoqda." : "Haydovchi yolda - Yetkazildi tugmasi haydovchi ilovasida bosiladi."}
                         </div>
                       )}
                     </div>
@@ -405,7 +382,7 @@ export default function App() {
             <div style={{ display: "grid", gap: 16 }}>
               {convertingOrderId && (
                 <div style={{ background: "#fff4e0", border: "1px solid #f0c674", borderRadius: 10, padding: 12, fontSize: 13.5, color: "#7a5a00" }}>
-                  Buyurtmadan sotuvga aylantirilmoqda — yakunlangach buyurtma avtomatik yopiladi.
+                  Buyurtmadan sotuvga aylantirilmoqda \u2014 yakunlangach buyurtma avtomatik yopiladi.
                 </div>
               )}
               {!saleCustomer ? (
@@ -414,8 +391,8 @@ export default function App() {
                   {!newCustomerForm ? (
                     <>
                       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <input className="mb-input" placeholder="Mijoz ID (4 xonali)" value={customerIdInput}
-                          onChange={(e) => setCustomerIdInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        <input className="mb-input" placeholder="Mijoz ID (4 yoki 8 xonali)" value={customerIdInput}
+                          onChange={(e) => setCustomerIdInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
                           onKeyDown={(e) => e.key === "Enter" && searchCustomer()} />
                         <button className="mb-btn mb-btn-dark" onClick={searchCustomer}><Search size={15} /></button>
                       </div>
@@ -459,7 +436,7 @@ export default function App() {
                           <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "#f7f6f1", borderRadius: 8, gap: 8, flexWrap: "wrap" }}>
                             <div style={{ minWidth: 140 }}>
                               <div style={{ fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
-                              <div style={{ fontSize: 12, color: "#8a887e" }}>{fmt(p.price)} • omborda: {p.qty}</div>
+                              <div style={{ fontSize: 12, color: "#8a887e" }}>{fmt(p.price)} \u2022 omborda: {p.qty}</div>
                             </div>
                             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                               <input type="number" min="1" max={p.qty} className="mb-input" style={{ width: 64, padding: "6px 8px" }} value={qtyDraft[p.id] ?? 1} onChange={(e) => setQtyDraft((d) => ({ ...d, [p.id]: e.target.value }))} />
@@ -494,7 +471,7 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 13.5, color: debtPreview > 0 ? "#a1281f" : "#2c7a4b", fontWeight: 600, marginBottom: 14 }}>{debtPreview > 0 ? `Yangi qarz bo'ladi: ${fmt(debtPreview)}` : "Qarz qolmaydi"}</div>
                       {saleError && <div style={{ color: "#c0392b", fontSize: 13.5, marginBottom: 10 }}>{saleError}</div>}
-                      <button className="mb-btn mb-btn-primary" disabled={busy} onClick={finishSale}>{busy ? "..." : "Chop etish"}</button>
+                      <button className="mb-btn mb-btn-primary" disabled={busy} onClick={finishSale}>{busy ? "..." : "Sotuvni yakunlash va chek chiqarish"}</button>
                     </div>
                   )}
                 </>
@@ -510,7 +487,7 @@ export default function App() {
                   {customerResults.length === 0 && <div style={{ color: "#8a887e", padding: "20px 0", textAlign: "center" }}>Mijozlar topilmadi.</div>}
                   {customerResults.map((c) => (
                     <div key={c.id} className="mb-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: 14 }} onClick={() => openCustomer(c)}>
-                      <div><div style={{ fontWeight: 700 }}>{c.name}</div><div style={{ fontSize: 12.5, color: "#8a887e", fontFamily: "monospace" }}>ID: {c.id} • {c.viloyat}</div></div>
+                      <div><div style={{ fontWeight: 700 }}>{c.name}</div><div style={{ fontSize: 12.5, color: "#8a887e", fontFamily: "monospace" }}>ID: {c.id} \u2022 {c.viloyat}</div></div>
                       {c.debt > 0 && <div style={{ color: "#a1281f", fontWeight: 700, fontSize: 13.5 }}>Qarz: {fmt(c.debt)}</div>}
                     </div>
                   ))}
@@ -535,7 +512,7 @@ export default function App() {
                       {selectedCustomer.purchases.map((p) => (
                         <div key={p.id} style={{ border: "1px solid #efeee7", borderRadius: 10, padding: 12 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#8a887e", marginBottom: 6 }}>
-                            <span>{formatDate(p.created_at)} • {p.seller_name}</span>
+                            <span>{formatDate(p.created_at)} \u2022 {p.seller_name}</span>
                             <span>Jami: {fmt(p.total)} / To'landi: {fmt(p.paid)}</span>
                           </div>
                           <div style={{ fontSize: 13.5 }}>{(p.sale_items || []).map((it) => `${it.product_name} x${it.qty}`).join(", ")}</div>
@@ -549,62 +526,21 @@ export default function App() {
           )}
 
           {activeTab === "history" && (
-            <div style={{ display: "grid", gap: 14 }}>
-              {!selectedSale ? (
-                <>
-                  <input
-                    className="mb-input"
-                    style={{ maxWidth: 360 }}
-                    placeholder="Mijoz ID, ism yoki buyurtma raqami..."
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                  />
-                  <div className="mb-card">
-                    {filteredHistory.length === 0 ? (
-                      <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>
-                        {historyRows.length === 0 ? "Hali sotuvlar tarixi yo'q." : "Hech narsa topilmadi."}
-                      </div>
-                    ) : (
-                      <table className="mb-table">
-                        <thead><tr><th>Sana</th><th>Mijoz</th><th>Buyurtma</th><th>Sotuvchi</th><th>Jami</th><th>To'landi</th></tr></thead>
-                        <tbody>
-                          {filteredHistory.map((r) => (
-                            <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => setSelectedSale(r)}>
-                              <td style={{ fontSize: 12.5 }}>{formatDate(r.created_at)}</td>
-                              <td>{r.customers?.name} <span style={{ color: "#8a887e", fontFamily: "monospace", fontSize: 11.5 }}>({r.customer_id})</span></td>
-                              <td style={{ fontSize: 12.5, color: "#8a887e" }}>{r.order_no ? `#${r.order_no}` : "—"}</td>
-                              <td>{r.seller_name}</td><td>{fmt(r.total)}</td>
-                              <td style={{ color: r.paid < r.total ? "#a1281f" : "#2c7a4b" }}>{fmt(r.paid)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="mb-card">
-                  <button className="mb-btn mb-btn-ghost" style={{ marginBottom: 14 }} onClick={() => setSelectedSale(null)}><ChevronLeft size={14} style={{ verticalAlign: -2 }} /> Orqaga</button>
-                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: "#8a887e", fontWeight: 700 }}>MIJOZ ID: {selectedSale.customer_id}</div>
-                      <div style={{ fontSize: 17, fontWeight: 700, margin: "3px 0" }}>{selectedSale.customers?.name}</div>
-                      <div style={{ fontSize: 12.5, color: "#8a887e" }}>{formatDate(selectedSale.created_at)} • Sotuvchi: {selectedSale.seller_name}{selectedSale.order_no ? ` • Buyurtma #${selectedSale.order_no}` : ""}</div>
-                    </div>
-                  </div>
-                  <table className="mb-table">
-                    <thead><tr><th>Nomi</th><th>Soni</th><th>Narxi</th><th>Summa</th></tr></thead>
-                    <tbody>
-                      {(selectedSale.sale_items || []).map((it) => (
-                        <tr key={it.id}><td>{it.product_name}</td><td>{it.qty}</td><td>{fmt(it.price)}</td><td>{fmt(it.price * it.qty)}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div style={{ textAlign: "right", marginTop: 14 }}>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>Jami: {fmt(selectedSale.total)}</div>
-                    <div style={{ color: selectedSale.paid < selectedSale.total ? "#a1281f" : "#2c7a4b", fontWeight: 600 }}>To'landi: {fmt(selectedSale.paid)}</div>
-                  </div>
-                </div>
+            <div className="mb-card">
+              {historyRows.length === 0 ? <div style={{ textAlign: "center", color: "#8a887e", padding: "30px 0" }}>Hali sotuvlar tarixi yo'q.</div> : (
+                <table className="mb-table">
+                  <thead><tr><th>Sana</th><th>Mijoz</th><th>Sotuvchi</th><th>Jami</th><th>To'landi</th></tr></thead>
+                  <tbody>
+                    {historyRows.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ fontSize: 12.5 }}>{formatDate(r.created_at)}</td>
+                        <td>{r.customers?.name} <span style={{ color: "#8a887e", fontFamily: "monospace", fontSize: 11.5 }}>({r.customer_id})</span></td>
+                        <td>{r.seller_name}</td><td>{fmt(r.total)}</td>
+                        <td style={{ color: r.paid < r.total ? "#a1281f" : "#2c7a4b" }}>{fmt(r.paid)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
           )}
@@ -634,85 +570,54 @@ function ReceiptOverlay({ data, onClose }) {
 }
 
 function ReceiptContent({ data }) {
-  const { customer, purchase, seller, sellerPhoneForReceipt } = data;
-  const hasLocation = customer.delivery_lat && customer.delivery_lng;
+  const { customer, purchase, seller } = data;
   return (
-    <div style={{ padding: 20, color: "#111", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "start", gap: 8, borderBottom: "2px solid #111", paddingBottom: 8, marginBottom: 10 }}>
+    <div style={{ padding: 28, color: "#111", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "3px solid #111", paddingBottom: 14, marginBottom: 16, gap: 10, flexWrap: "wrap" }}>
         <div>
-          {purchase.orderNo && (
-            <img
-              src={`https://barcode.tec-it.com/barcode.ashx?data=${purchase.orderNo}&code=Code128&translate-esc=on`}
-              alt="Shtrix-kod"
-              style={{ height: 34, marginBottom: 3 }}
-            />
-          )}
-          <div style={{ fontSize: 9.5, lineHeight: 1.5, textTransform: "lowercase" }}>
-            <div>mijoz id: {customer.id}</div>
-            <div>tel: {customer.phone || "—"}</div>
-            {purchase.orderNo && <div>buyurtma id: #{purchase.orderNo}</div>}
-            <div>sotuvchi tel: {sellerPhoneForReceipt || "—"}</div>
+          <LogoMark size={18} />
+          <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.7 }}>
+            <div>Mijoz ID: <b style={{ fontFamily: "monospace" }}>{customer.id}</b></div>
+            <div>Mijoz: <b>{customer.name}</b></div>
+            <div>Manzil: {customer.viloyat}{customer.manzil ? `, ${customer.manzil}` : ""}</div>
           </div>
         </div>
-
-        <div style={{ textAlign: "center" }}>
-          <LogoMark size={16} />
-          {hasLocation && (
-            <div style={{ marginTop: 4 }}>
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
-                alt="Manzil QR"
-                style={{ width: 50, height: 50 }}
-              />
-              <div style={{ fontSize: 8, color: "#666" }}>manzil</div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ textAlign: "right", fontSize: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end", marginBottom: 2 }}><Instagram size={11} /> @marba_avtoparts</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end", marginBottom: 4 }}><Send size={11} /> @marba_zapchast</div>
+        <div style={{ textAlign: "right", fontSize: 12.5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 4 }}><Instagram size={14} /> @marba_avtoparts</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginBottom: 10 }}><Send size={14} /> @marba_zapchast</div>
           <div>Sana: {formatDate(purchase.date)}</div>
           <div>Sotuvchi: {seller}</div>
         </div>
       </div>
-
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>{customer.name} — {customer.viloyat}{customer.manzil ? `, ${customer.manzil}` : ""}</div>
-
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 10 }}>
-        <thead>
-          <tr>
-            <th style={excelTh}>Nomi</th>
-            <th style={{ ...excelTh, textAlign: "center" }}>Miqdor</th>
-            <th style={{ ...excelTh, textAlign: "right" }}>Narx</th>
-            <th style={{ ...excelTh, textAlign: "right" }}>Umumiy narx</th>
-          </tr>
-        </thead>
+      {customer.delivery_lat && customer.delivery_lng && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+          <div style={{ textAlign: "center" }}>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(`https://yandex.uz/maps/?pt=${customer.delivery_lng},${customer.delivery_lat}&z=16&l=map`)}`}
+              alt="Manzil QR"
+              style={{ width: 90, height: 90 }}
+            />
+            <div style={{ fontSize: 10.5, color: "#666", marginTop: 4 }}>Yetkazib berish manzili</div>
+          </div>
+        </div>
+      )}
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, marginBottom: 14 }}>
+        <thead><tr><th style={{ textAlign: "left", padding: "6px 4px", borderBottom: "2px solid #111" }}>Nomi</th><th style={{ textAlign: "center", padding: "6px 4px", borderBottom: "2px solid #111" }}>Soni</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Narxi</th><th style={{ textAlign: "right", padding: "6px 4px", borderBottom: "2px solid #111" }}>Summa</th></tr></thead>
         <tbody>
           {purchase.items.map((it, i) => (
-            <tr key={i}>
-              <td style={excelTd}>{it.name}</td>
-              <td style={{ ...excelTd, textAlign: "center" }}>{it.qty} {it.birlik === "komplekt" ? "komplekt" : "dona"}</td>
-              <td style={{ ...excelTd, textAlign: "right" }}>{fmt(it.price)}</td>
-              <td style={{ ...excelTd, textAlign: "right" }}>{fmt(it.price * it.qty)}</td>
-            </tr>
+            <tr key={i}><td style={{ padding: "6px 4px", borderBottom: "1px solid #ddd" }}>{it.name}</td><td style={{ padding: "6px 4px", borderBottom: "1px solid #ddd", textAlign: "center" }}>{it.qty}</td><td style={{ padding: "6px 4px", borderBottom: "1px solid #ddd", textAlign: "right" }}>{fmt(it.price)}</td><td style={{ padding: "6px 4px", borderBottom: "1px solid #ddd", textAlign: "right" }}>{fmt(it.price * it.qty)}</td></tr>
           ))}
         </tbody>
       </table>
-
-      <div style={{ marginLeft: "auto", width: 230, fontSize: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderTop: "2px solid #111", paddingTop: 6 }}><span>umumiy summa:</span><b>{fmt(purchase.total)}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>eski qarz:</span><b>{fmt(Math.max((customer.debt || 0) - purchase.total + purchase.paid, 0))}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>hozirgi qarz:</span><b>{fmt(customer.debt)}</b></div>
+      <div style={{ marginLeft: "auto", width: 240, fontSize: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>Jami:</span><b>{fmt(purchase.total)}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}><span>To'landi:</span><b>{fmt(purchase.paid)}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: customer.debt > 0 ? "#a1281f" : "#2c7a4b" }}><span>Qolgan qarz:</span><b>{fmt(customer.debt)}</b></div>
       </div>
-
-      <div style={{ borderTop: "1px solid #ccc", marginTop: 12, paddingTop: 6, fontSize: 9.5, color: "#666", textAlign: "center" }}>MARBA AUTO PARTS — Xaridingiz uchun rahmat!</div>
+      <div style={{ borderTop: "1px solid #ccc", marginTop: 18, paddingTop: 10, fontSize: 11.5, color: "#666", textAlign: "center" }}>MARBA AUTO PARTS \u2014 Xaridingiz uchun rahmat!</div>
     </div>
   );
 }
-
-const excelTh = { textAlign: "left", padding: "3px 5px", border: "1px solid #111", background: "#f3f2ec", fontWeight: 700, fontSize: 9.5, textTransform: "uppercase" };
-const excelTd = { padding: "3px 5px", border: "1px solid #999" };
 
 const loginCss = `
   * { box-sizing: border-box; }
